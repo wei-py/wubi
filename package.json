@@ -1,0 +1,41 @@
+{
+  "name": "wubi-learning",
+  "version": "1.0.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --host 0.0.0.0 --port 5176 --strictPort",
+    "build": "vp build",
+    "preview": "vp preview --host 0.0.0.0 --port 4176 --strictPort",
+    "lint": "eslint .",
+    "test": "node --test",
+    "data:build": "node scripts/build-chars.js wubi86 && node scripts/build-zigen.js wubi86 && node scripts/build-chars.js wubi98 && node scripts/build-zigen.js wubi98 && node scripts/build-words.js",
+    "data:verify": "node scripts/verify-data.js wubi86 && node scripts/verify-data.js wubi98 && node scripts/verify-articles.js"
+  },
+  "dependencies": {
+    "dayjs": "1.11.23",
+    "pinia": "4.1.0",
+    "vue": "3.5.44",
+    "vue-hooks-plus": "2.4.3",
+    "vue-router": "4.6.4",
+    "xe-utils": "4.1.4"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "7.4.3",
+    "@iconify-json/carbon": "1.2.29",
+    "@tailwindcss/vite": "4.3.3",
+    "@unocss/preset-icons": "66.12.0",
+    "@unocss/vite": "66.12.0",
+    "@vitejs/plugin-vue": "6.0.10",
+    "eslint": "10.13.0",
+    "eslint-plugin-jsdoc": "65.4.2",
+    "tailwindcss": "4.3.3",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vite-plus": "1.4.0"
+  },
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
+  "packageManager": "pnpm@12.5.1"
+}
