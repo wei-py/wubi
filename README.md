@@ -23,6 +23,21 @@ pnpm data:verify
 
 `dist/` 可直接部署到静态托管。使用相对资源路径和 Hash 路由，支持部署到子目录，不需要服务端路由回退规则。
 
+## 发布到 GitHub Pages
+
+已提供 `.github/workflows/deploy-pages.yml`，推送到 `master` 或在 Actions 页面手动运行时，会使用 Node.js 26 和项目声明的 pnpm 版本构建并发布 `dist/`。
+
+首次启用：
+
+1. 打开仓库 [Settings → Pages](https://github.com/wei-py/wubi/settings/pages)。
+2. 在 **Build and deployment → Source** 中选择 **GitHub Actions**。
+3. 将包含工作流的提交推送到 `master`；若提交已经推送，可在 [Actions](https://github.com/wei-py/wubi/actions) 中选择 **Deploy to GitHub Pages → Run workflow**。
+4. 等待 `build` 和 `deploy` 都成功后，访问 **https://wei-py.github.io/wubi/**。
+
+不需要创建 `gh-pages` 分支，也不需要手动提交 `dist/`。保留相对资源路径和 Hash 路由，课程等页面刷新时不会因 GitHub Pages 缺少服务端路由回退而返回 404。若更换发布分支，需同步修改工作流的 `on.push.branches`。
+
+注意：本地开发站点与 GitHub Pages 不同源，学习进度不会自动迁移；发布后需要在本地导出存档，再到线上导入。
+
 ## 学习内容
 
 - 6 个阶段、43 个关卡：字根启蒙、简码入门、识别码专题、常用字爬坡、词组爬坡、挑战关卡。

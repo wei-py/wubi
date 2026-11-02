@@ -1,5 +1,10 @@
 # 更新记录
 
+## GitHub Pages — 2026-11-02
+
+- 增加 GitHub Actions 构建与 Pages 发布工作流：推送 `master` 自动部署，也支持手动触发。
+- 补充首次启用、发布地址、子目录路由与本地存档迁移说明。
+
 ## 1.0.0 — 2026-11-02
 
 - 建立与 Herdr 一致的 Vue 3、Pinia、Vue Router、Vite Plus、Tailwind CSS 4 与 UnoCSS 技术栈，应用和数据脚本迁移为 JavaScript。
