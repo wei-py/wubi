@@ -1,0 +1,217 @@
+/**
+ * 数据校验脚本。
+ *
+ * 用法：node scripts/verify-data.js [wubi86|wubi98]（默认 wubi86）
+ *
+ * 校验规则：
+ *   ① chars.radicals 的键位拼接为 code 前缀（允许恰好多 1 位识别码）
+ *   ② 一级简码 25 字与标准表一致
+ *   ③ zigen 25 键完整；roots 与人工配置逐项一致；layout 引用的字形都在 roots 中
+ *   ④ 随机抽取 50 个一级常用字输出编码清单，供人工比对
+ */
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { WORD_BLACKLIST } from "./build-words.js";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const SOURCES = resolve(ROOT, "scripts/sources");
+const KEY_ORDER = "gfdsahjklmtrewqyuiopnbvcx".split("");
+
+/** 一级简码：键 → 字（86/98 相同） */
+const LEVEL1 = {
+  g: "一",
+  f: "地",
+  d: "在",
+  s: "要",
+  a: "工",
+  h: "上",
+  j: "是",
+  k: "中",
+  l: "国",
+  m: "同",
+  t: "和",
+  r: "的",
+  e: "有",
+  w: "人",
+  q: "我",
+  y: "主",
+  u: "产",
+  i: "不",
+  o: "为",
+  p: "这",
+  n: "民",
+  b: "了",
+  v: "发",
+  c: "以",
+  x: "经",
+};
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function verify(scheme) {
+  const suffix = scheme.slice(-2);
+  const chars = readJson(resolve(ROOT, `src/data/generated/${scheme}/chars.json`));
+  const zigen = readJson(resolve(ROOT, `src/data/generated/${scheme}/zigen.json`));
+  const cfg = readJson(resolve(SOURCES, `zigen-${suffix}.json`));
+  const layout = readJson(resolve(SOURCES, `layout-${suffix}.json`));
+  const common3500 = readJson(resolve(ROOT, "src/data/generated/common3500.json"));
+  const words = readJson(resolve(ROOT, "src/data/generated/words.json"));
+  const wubi86 =
+    scheme === "wubi86" ? chars : readJson(resolve(ROOT, "src/data/generated/wubi86/chars.json"));
+
+  const total = Object.keys(chars).length;
+  const freq1 = Object.values(chars).filter((e) => e.freq === 1).length;
+
+  // ① radicals 键位前缀
+  let failPrefix = 0;
+  const badPrefix = [];
+  for (const [ch, e] of Object.entries(chars)) {
+    const joined = e.radicals.map((r) => r[1]).join("");
+    const ok = joined.length <= e.code.length && e.code.startsWith(joined);
+    if (!ok) {
+      failPrefix++;
+      if (badPrefix.length < 10) badPrefix.push(`${ch} ${e.code} radicals=${joined}`);
+    }
+  }
+
+  // ② 一级简码
+  const found = {};
+  for (const [ch, e] of Object.entries(chars)) {
+    for (const s of e.short) {
+      if (s.length === 1) found[s] = ch;
+    }
+  }
+  const level1Ok =
+    Object.keys(LEVEL1).length === Object.keys(found).length &&
+    Object.entries(LEVEL1).every(([k, v]) => found[k] === v);
+
+  // ③ zigen 完整性 + 与配置一致
+  const zigenIssues = [];
+  if (zigen.length !== 25) zigenIssues.push(`键位数 ${zigen.length}（要求 25）`);
+  const byKey = new Map(zigen.map((z) => [z.key, z]));
+  for (const key of KEY_ORDER) {
+    const z = byKey.get(key);
+    if (!z) {
+      zigenIssues.push(`${key} 缺失`);
+      continue;
+    }
+    if (z.name !== cfg.names[key]) zigenIssues.push(`${key} 键名不一致`);
+    if (z.short1 !== cfg.short1[key]) zigenIssues.push(`${key} 简码不一致`);
+    if (JSON.stringify(z.roots) !== JSON.stringify(cfg.roots[key])) {
+      zigenIssues.push(`${key} roots 与配置不一致`);
+    }
+    const lo = layout.layouts[key];
+    if (
+      !lo ||
+      z.layout.size !== lo.size ||
+      JSON.stringify(z.layout.cells) !== JSON.stringify(lo.cells)
+    ) {
+      zigenIssues.push(`${key} 布局与配置不一致`);
+    }
+    // layout 引用的字形都在 roots 中
+    const rootSet = new Set(z.roots);
+    for (const cell of z.layout.cells) {
+      if (cell && !rootSet.has(cell.cp)) {
+        zigenIssues.push(`${key} 布局含 roots 外的字形`);
+        break;
+      }
+    }
+  }
+
+  // ④ 常用 3500 字完整性 + 与 wubi86 freq=1 集合一致
+  const commonIssues = [];
+  if (common3500.length !== 3500) commonIssues.push(`长度 ${common3500.length}（要求 3500）`);
+  if (new Set(common3500).size !== common3500.length) commonIssues.push("存在重复字");
+  const commonSet = new Set(common3500);
+  const notInChars = [...commonSet].filter((ch) => !(ch in wubi86));
+  if (notInChars.length) {
+    commonIssues.push(`不在 wubi86 chars.json：${notInChars.slice(0, 10).join("")}`);
+  }
+  const freq1Set = new Set(Object.keys(wubi86).filter((ch) => wubi86[ch].freq === 1));
+  const missingFreq1 = [...freq1Set].filter((ch) => !commonSet.has(ch));
+  const extraFreq1 = [...commonSet].filter((ch) => !freq1Set.has(ch));
+  if (missingFreq1.length || extraFreq1.length) {
+    commonIssues.push(
+      `与 freq=1 集合不一致（缺 ${missingFreq1.slice(0, 10).join("") || "无"}，` +
+        `多 ${extraFreq1.slice(0, 10).join("") || "无"}）`,
+    );
+  }
+
+  // ⑤ 词组表：数量 / 纯汉字 / 去重 / 黑名单
+  const wordIssues = [];
+  const EXPECT = [
+    { key: "words2", count: 1000 },
+    { key: "words3", count: 200 },
+    { key: "words4", count: 200 },
+  ];
+  for (const { key, count } of EXPECT) {
+    const list = words[key];
+    if (list.length !== count) wordIssues.push(`${key} 长度 ${list.length}（要求 ${count}）`);
+    const bad = list.filter((w) => !/^[\u4E00-\u9FFF]+$/.test(w));
+    if (bad.length) wordIssues.push(`${key} 含非纯汉字：${bad.slice(0, 5).join(" ")}`);
+    const dup = list.length - new Set(list).size;
+    if (dup > 0) wordIssues.push(`${key} 重复 ${dup} 个`);
+  }
+  const hits = [...new Set([...words.words2, ...words.words3, ...words.words4])].filter((w) =>
+    WORD_BLACKLIST.includes(w),
+  );
+  if (hits.length) wordIssues.push(`命中黑名单：${hits.join(" ")}`);
+
+  console.log(`=== ${scheme} 数据校验 ===`);
+  console.log(`单字条目：${total}（要求 ≥ 7000）`);
+  console.log(`一级常用字：${freq1}（要求 = 3500）`);
+  console.log(`① radicals 键位前缀：${failPrefix === 0 ? "通过" : `失败 ${failPrefix}`}`);
+  if (badPrefix.length) console.log("   示例：", badPrefix.join(" | "));
+  console.log(`② 一级简码 25 字：${level1Ok ? "通过" : "不一致"}`);
+  if (!level1Ok) console.log("   实际：", JSON.stringify(found));
+  console.log(
+    `③ 字根表完整性/一致性：${zigenIssues.length === 0 ? "通过" : `异常（${zigenIssues.join("; ")}）`}`,
+  );
+  console.log(
+    `④ 常用 3500 字：${commonIssues.length === 0 ? "通过" : `异常（${commonIssues.join("; ")}）`}`,
+  );
+  console.log(`⑤ 词组表：${wordIssues.length === 0 ? "通过" : `异常（${wordIssues.join("; ")}）`}`);
+
+  // ④ 抽样
+  const freq1Chars = Object.keys(chars).filter((ch) => chars[ch].freq === 1);
+  const sample = [];
+  const step = Math.max(1, Math.floor(freq1Chars.length / 50));
+  for (let i = 0; i < freq1Chars.length && sample.length < 50; i += step) {
+    sample.push(freq1Chars[i]);
+  }
+  console.log("=== 抽样编码（供人工比对）===");
+  console.log(
+    sample
+      .map((ch) => `${ch} ${chars[ch].code}  ${chars[ch].radicals.map((r) => r[1]).join("")}`)
+      .join("  |  "),
+  );
+
+  const ok =
+    total >= 7000 &&
+    freq1 === 3500 &&
+    failPrefix === 0 &&
+    level1Ok &&
+    zigenIssues.length === 0 &&
+    commonIssues.length === 0 &&
+    wordIssues.length === 0;
+  return ok;
+}
+
+function main() {
+  const arg = process.argv[2] || "wubi86";
+  if (arg !== "wubi86" && arg !== "wubi98") {
+    console.error(`未知方案：${arg}（可选 wubi86 / wubi98）`);
+    process.exit(1);
+  }
+  if (!verify(arg)) {
+    console.error(`\n${arg} 数据校验未通过`);
+    process.exit(1);
+  }
+  console.log(`\n${arg} 数据校验全部通过`);
+}
+
+main();
