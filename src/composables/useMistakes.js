@@ -1,8 +1,8 @@
 import { computed } from "vue";
 
-import { flushSave, touchSave, useSave } from "./useSave.js";
+import { flushSave, useSave } from "./useSave.js";
 
-/** 错题本：记录、查询、标记掌握（数据存于统一存档 mistakes 字段） */
+/** 错题本：变更立即写入统一存档，不依赖防抖或页面退出事件。 */
 export function useMistakes() {
   const { save } = useSave();
 
@@ -22,14 +22,14 @@ export function useMistakes() {
     entry.lastAt = Date.now();
     entry.mastered = false;
     save.value.mistakes[char] = entry;
-    touchSave();
+    flushSave();
   }
 
   function markMastered(char) {
     const entry = save.value.mistakes[char];
     if (entry && !entry.mastered) {
       entry.mastered = true;
-      touchSave();
+      flushSave();
     }
   }
 
@@ -41,7 +41,7 @@ export function useMistakes() {
   function clear(char) {
     if (save.value.mistakes[char]) {
       delete save.value.mistakes[char];
-      touchSave();
+      flushSave();
     }
   }
 
