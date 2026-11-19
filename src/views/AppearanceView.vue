@@ -17,7 +17,7 @@ const {
   <header class="paper-heading">
     <span class="eyebrow">WUBI / PREFERENCES</span>
     <h1>适合自己的练习方式</h1>
-    <p class="paper-lead">偏好会自动保存在当前浏览器。默认使用与 Herdr 一致的白纸界面。</p>
+    <p class="paper-lead">偏好会自动保存在当前浏览器。默认跟随系统外观，也可固定为浅色或深色。</p>
   </header>
   <nav class="section-tabs" aria-label="设置导航">
     <RouterLink to="/settings">存档管理</RouterLink><RouterLink to="/appearance" aria-current="page">外观与练习偏好</RouterLink>

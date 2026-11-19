@@ -26,7 +26,7 @@ function write(key, value) {
 
 function initialTheme() {
   const value = read(THEME_KEY);
-  return value === "light" || value === "dark" || value === "auto" ? value : "light";
+  return value === "light" || value === "dark" ? value : "auto";
 }
 
 function initialVolume() {
@@ -44,22 +44,21 @@ const hintsOn = ref(read(HINTS_KEY) !== "off");
 const codeHintOn = ref(read(CODEHINT_KEY) !== "off");
 const scheme = ref(read(SCHEME_KEY) === "wubi86" ? "wubi86" : "wubi98");
 
-function systemPrefersDark() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia("(prefers-color-scheme: dark)").matches
-    : false;
-}
-
 function applyTheme() {
   if (typeof document === "undefined") return;
-  const resolved = theme.value === "auto" ? (systemPrefersDark() ? "dark" : "light") : theme.value;
-  document.documentElement.setAttribute("data-theme", resolved);
+  const explicit = theme.value !== "auto";
+  if (explicit) document.documentElement.setAttribute("data-theme", theme.value);
+  else document.documentElement.removeAttribute("data-theme");
+  const schemeMeta = document.querySelector('meta[name="color-scheme"]');
+  if (schemeMeta) schemeMeta.content = explicit ? theme.value : "light dark";
 }
 
 applyTheme();
-if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-    if (theme.value === "auto") applyTheme();
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== THEME_KEY && event.key !== null) return;
+    theme.value = initialTheme();
+    applyTheme();
   });
 }
 
@@ -71,8 +70,14 @@ export function useUiSettings() {
   }
 
   function setTheme(value) {
-    theme.value = value;
-    write(THEME_KEY, value);
+    theme.value = value === "light" || value === "dark" ? value : "auto";
+    if (theme.value === "auto") {
+      try {
+        localStorage.removeItem(THEME_KEY);
+      } catch {
+        // Following the system remains usable when storage is unavailable.
+      }
+    } else write(THEME_KEY, theme.value);
     applyTheme();
   }
 

@@ -24,7 +24,7 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --paper: #ffffff;
   --paper-raised: #ffffff;
   --paper-muted: #f5f6f5;
@@ -60,6 +60,31 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #171918;
+    --paper-raised: #171918;
+    --paper-muted: #222624;
+    --ink: #e9eeeb;
+    --ink-muted: #a2aca6;
+    --rule: #343b37;
+    --rule-strong: #78877e;
+    --accent: #e9eeeb;
+    --accent-soft: #252c28;
+    --success: #9ac4aa;
+    --success-soft: #22352a;
+    --warning: #d5ba86;
+    --warning-soft: #342d20;
+    --danger: #e0a29b;
+    --danger-soft: #392825;
+    --focus: #9ac4aa;
+  }
 }
 
 option { font-weight: inherit; }
@@ -159,8 +184,8 @@ pre {
   outline-offset: 3px;
 }
 ::selection {
-  background: #dce8df;
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 .learning-shell {

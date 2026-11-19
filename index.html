@@ -3,7 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        const theme = localStorage.getItem("wubi-learning.ui.theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+          document.querySelector('meta[name="color-scheme"]').content = theme;
+        }
+      } catch {}
+    </script>
     <meta name="description" content="从字根、简码到文章跟打的五笔学习站。支持 86 版与 98 王码，43 个关卡全部开放，自由练习。" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <title>五笔学习</title>
