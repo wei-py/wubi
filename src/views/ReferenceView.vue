@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useUiSettings } from "@/composables/useUiSettings.js";
 import { loadAllChars, loadZigen } from "@/data/loader.js";
+import { SCHEME_LABELS } from "@/schemes/catalog.js";
 const { scheme } = useUiSettings();
 const roots = ref([]);
 const chars = ref({});
@@ -48,7 +49,7 @@ onMounted(async () => {
     <span class="eyebrow">WUBI / QUICK REFERENCE</span>
     <h1>想不起来，就查一下</h1>
     <p class="paper-lead">
-      {{ scheme === "wubi98" ? "98 王码" : "86 版" }} · 25
+      {{ SCHEME_LABELS[scheme] }} · 25
       个键位、字根口诀与汉字编码。查过，再亲手打一遍。
     </p>
   </header>

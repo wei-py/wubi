@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { flushSave, useSave } from "./composables/useSave.js";
 import { useUiSettings } from "./composables/useUiSettings.js";
 import { STAGES } from "./data/stages.js";
+import { SCHEME_LABELS } from "./schemes/catalog.js";
 import Dialog from "./shared/Dialog.vue";
 const route = useRoute();
 const router = useRouter();
@@ -58,8 +59,7 @@ function skip() {
         <RouterLink to="/" class="learning-brand"><span class="learning-brand__mark" aria-hidden="true">&gt;_</span>五笔学习</RouterLink>
         <label class="scheme-control">输入方案
           <select :value="scheme" aria-label="输入方案" @change="changeScheme">
-            <option value="wubi98">98 王码</option>
-            <option value="wubi86">86 版</option>
+            <option v-for="(label, id) in SCHEME_LABELS" :key="id" :value="id">{{ label }}</option>
           </select>
         </label>
         <nav class="learning-nav" aria-label="主要导航">
@@ -115,13 +115,11 @@ function skip() {
           <strong>常用字、词组、挑战与自由练习：</strong>使用电脑上的五笔输入法输入汉字。网页记录速度、正确率和错字，不替代系统输入法。
         </p>
         <p>
-          尚未安装五笔输入法，也可以先练字根与编码。请确保系统输入法版本与页面顶部的 86／98
-          方案一致。
+          尚未安装五笔输入法，也可以先练字根与编码。请确保系统输入法版本与页面顶部选择的方案一致。
         </p>
         <h3>成绩与保存</h3>
         <p>
-          速度与正确率是学习参考，不影响选关。进度保存在当前浏览器，86／98
-          分别记录；换设备前请在设置中导出存档。
+          速度与正确率是学习参考，不影响选关。各方案的进度独立保存在当前浏览器；换设备前请在设置中导出存档。
         </p>
       </div>
     </Dialog>

@@ -4,6 +4,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useSave } from "@/composables/useSave.js";
 import { useUiSettings } from "@/composables/useUiSettings.js";
+import { SCHEME_LABELS } from "@/schemes/catalog.js";
 import Dialog from "@/shared/Dialog.vue";
 const { save, exportSave, importSave, resetAll } = useSave();
 const { scheme } = useUiSettings();
@@ -16,7 +17,7 @@ const pendingText = ref("");
 const fileName = ref("");
 const summary = computed(() => ({
   passed: Object.values(save.value.progress.levels).filter((level) => level.passed).length,
-  mistakes: Object.keys(save.value.mistakes).length,
+  mistakes: Object.values(save.value.mistakesByLevel).reduce((total, book) => total + Object.keys(book).length, 0),
   chars: Object.keys(save.value.stats).length,
 }));
 watch(
@@ -73,8 +74,8 @@ function confirm() {
     <span class="eyebrow">WUBI / SETTINGS & DATA</span>
     <h1>把进步，好好保存</h1>
     <p class="paper-lead">
-      {{ scheme === "wubi98" ? "98 王码" : "86 版" }} ·
-      数据只保存在当前浏览器。两套方案独立记录，不需要注册账号。
+      {{ SCHEME_LABELS[scheme] }} ·
+      数据只保存在当前浏览器。各方案独立记录，不需要注册账号。
     </p>
   </header>
   <nav class="section-tabs" aria-label="设置导航">
@@ -119,11 +120,7 @@ function confirm() {
   <section class="form-section">
     <h2>重新开始</h2>
     <p>
-      只清空当前
-      {{
-        scheme === "wubi98" ? "98 王码" : "86 版"
-      }}
-      的成绩、错字和统计，不影响另一套方案。清空后无法撤销，关卡依然全部开放。
+      只清空当前{{ SCHEME_LABELS[scheme] }}的成绩、错字和统计，不影响其他方案。清空后无法撤销，关卡依然全部开放。
     </p>
     <button class="base-button reset-button" @click="pending = 'reset'">清空当前方案数据</button>
   </section>
@@ -143,7 +140,7 @@ function confirm() {
     <p class="reading">
       {{
         pending === "reset"
-          ? "课程成绩、错字记录与单字统计会被清空，无法撤销。另一套五笔方案不受影响。"
+          ? "课程成绩、错字记录与单字统计会被清空，无法撤销。其他五笔方案不受影响。"
           : `将使用「${fileName}」覆盖当前方案的成绩、错字与统计。建议先导出备份。`
       }}
     </p>

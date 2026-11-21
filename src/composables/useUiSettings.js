@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { normalizeScheme, readScheme, SCHEME_KEY } from "../schemes/catalog.js";
 
 const ALIGN_KEY = "wubi-learning.ui.align";
 const THEME_KEY = "wubi-learning.ui.theme";
@@ -6,7 +7,6 @@ const SOUND_KEY = "wubi-learning.ui.sound";
 const VOLUME_KEY = "wubi-learning.ui.volume";
 const HINTS_KEY = "wubi-learning.ui.hints";
 const CODEHINT_KEY = "wubi-learning.ui.codehint";
-const SCHEME_KEY = "wubi-learning.ui.scheme";
 
 function read(key) {
   try {
@@ -42,7 +42,7 @@ const soundOn = ref(read(SOUND_KEY) !== "off");
 const volume = ref(initialVolume());
 const hintsOn = ref(read(HINTS_KEY) !== "off");
 const codeHintOn = ref(read(CODEHINT_KEY) !== "off");
-const scheme = ref(read(SCHEME_KEY) === "wubi86" ? "wubi86" : "wubi98");
+const scheme = ref(readScheme());
 
 function applyTheme() {
   if (typeof document === "undefined") return;
@@ -104,8 +104,8 @@ export function useUiSettings() {
 
   // The caller saves current progress and reloads to activate the new scheme.
   function setScheme(value) {
-    scheme.value = value;
-    write(SCHEME_KEY, value);
+    scheme.value = normalizeScheme(value);
+    write(SCHEME_KEY, scheme.value);
   }
 
   return {
