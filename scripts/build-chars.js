@@ -1,11 +1,12 @@
 /**
  * 码表构建脚本：将原始数据源转换为前端使用的单字码表。
  *
- * 用法：node scripts/build-chars.js [wubi86|wubi98]（默认 wubi86）
+ * 用法：node scripts/build-chars.js [wubi86|wubi98|wubi06]（默认 wubi86）
  *
  * 输入（scripts/sources/）：
  *   - wubi86.dict.yaml / wubi98.dict.yaml    RIME 码表（唯一编码事实源）
  *   - data-wubi-v86.tsv / data-wubi-v98.tsv  字根拆解序列
+ *   - data-wubi-v06.tsv                     新世纪全码、简码与字根拆分
  *   - data-chars.tsv                         汉字分级（一级 3500）
  *   - roots-map.json                         86 版 PUA → 字根文本映射
  *
@@ -20,6 +21,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { SCHEME_LABELS } from "../src/schemes/catalog.js";
+import { readChars06 } from "./wubi06.js";
 
 /** 25 键键名字根（86/98 相同），用于未识别 PUA 的兜底显示 */
 const KEY_ROOT = {
@@ -344,12 +347,13 @@ function pickCode(codes, fallback) {
 
 function buildChars(scheme) {
   const cfg = SCHEMES[scheme];
-  const dict = parseDict(cfg.dict);
-  const data = scheme === "wubi86" ? parseData86(cfg.data) : parseData98(cfg.data);
+  const dict = cfg ? parseDict(cfg.dict) : new Map();
+  const data =
+    scheme === "wubi06" ? readChars06() : scheme === "wubi86" ? parseData86(cfg.data) : parseData98(cfg.data);
   const level1 = parseLevel1();
   const rootsMap = scheme === "wubi86" ? parseRootsMap() : new Map();
 
-  // 官方一/二级简码反查表（86 用官方二级表；一级两方案相同）
+  // 86 用官方一、二级简码反查表；98 与新世纪各自保留其码表的简码。
   const short1ByChar = new Map();
   for (const [c, ch] of Object.entries(SHORT1)) short1ByChar.set(ch, c);
   const short2ByChar = new Map();
@@ -379,7 +383,7 @@ function buildChars(scheme) {
     const code = pickCode(codes, d?.code ?? "");
     if (!code) continue;
 
-    const short = [];
+    const short = d?.short ?? [];
     if (scheme === "wubi86") {
       // 86：一级/二级以官方简码表为准（rime 表混入的词组位/空位单字条目不可作二级简码）；
       // 三级沿用码表登记的三级简码条目（全码 4 码且该 3 码条目归属本字）
@@ -399,8 +403,8 @@ function buildChars(scheme) {
     }
     short.sort((a, b) => a.length - b.length || a.localeCompare(b));
 
-    const radicals = [];
-    if (d) {
+    const radicals = d?.radicals ?? [];
+    if (d?.puas) {
       const n = Math.min(d.puas.length, code.length);
       for (let i = 0; i < n; i++) {
         const key = code[i];
@@ -439,7 +443,7 @@ function buildChars(scheme) {
     "utf8",
   );
 
-  // 常用 3500 字（方案共用；两方案重复写入相同内容）
+  // 常用 3500 字（各方案共用）
   const common3500 = buildCommon3500();
   writeFileSync(resolve(OUT_ROOT, "common3500.json"), JSON.stringify(common3500), "utf8");
 
@@ -450,8 +454,8 @@ function buildChars(scheme) {
 
 function main() {
   const arg = process.argv[2] || "wubi86";
-  if (arg !== "wubi86" && arg !== "wubi98") {
-    console.error(`未知方案：${arg}（可选 wubi86 / wubi98）`);
+  if (!Object.hasOwn(SCHEME_LABELS, arg)) {
+    console.error(`未知方案：${arg}（可选 ${Object.keys(SCHEME_LABELS).join(" / ")}）`);
     process.exit(1);
   }
   buildChars(arg);

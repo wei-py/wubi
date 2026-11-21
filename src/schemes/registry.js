@@ -1,4 +1,5 @@
 import { loadAllChars } from "../data/loader.js";
+import { normalizeScheme, SCHEME_LABELS } from "./catalog.js";
 
 /** 已加载的码表；未加载时为 undefined */
 const tables = {};
@@ -27,13 +28,11 @@ function makeScheme(scheme) {
   };
 }
 
-/** 86 版（微软五笔）方案实现 */
-export const wubi86 = makeScheme("wubi86");
-
-/** 98 王码方案实现 */
-export const wubi98 = makeScheme("wubi98");
+const schemes = Object.fromEntries(
+  Object.keys(SCHEME_LABELS).map((scheme) => [scheme, makeScheme(scheme)]),
+);
 
 /** 按 id 取方案实现 */
 export function getScheme(scheme) {
-  return scheme === "wubi98" ? wubi98 : wubi86;
+  return schemes[normalizeScheme(scheme)];
 }

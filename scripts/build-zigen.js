@@ -1,13 +1,13 @@
 /**
  * 字根表与键盘布局构建脚本（严格采用人工配置，不做字根推理）。
  *
- * 用法：node scripts/build-zigen.js [wubi86|wubi98]（默认 wubi86）
+ * 用法：node scripts/build-zigen.js [wubi86|wubi98|wubi06]（默认 wubi86）
  *
  * 输入（scripts/sources/）：
- *   - zigen-{scheme}.json    人工配置：names / short1 / roots
- *   - layout-{scheme}.json   人工配置：每键 size + cells（位置/加粗/标记）
- *   - zigen.json             86 版 25 键口诀源
- *   - data-wubi-v86.tsv / data-wubi-v98.tsv  拆解数据（统计常用字根权重）
+ *   - zigen-{版本}.json    人工配置：names / short1 / roots（新世纪版也含助记说明）
+ *   - layout-{版本}.json   86／98 人工布局；新世纪版按 root 顺序排版
+ *   - zigen.json          86 版 25 键口诀源
+ *   - data-wubi-v{版本}.tsv 拆解数据（统计常用字根权重）
  *   - data-chars.tsv         一级常用字
  *
  * 输出（src/data/generated/{scheme}/）：
@@ -18,6 +18,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { SCHEME_LABELS } from "../src/schemes/catalog.js";
+import { layout06, readChars06 } from "./wubi06.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCES = resolve(ROOT, "scripts/sources");
@@ -146,9 +148,15 @@ function parseLevel1() {
   return result;
 }
 
-/** 拆解数据 → 字 → PUA 序列（86/98 两种格式） */
+/** 拆解数据 → 字 → PUA 序列 */
 function parseDecomposition(scheme) {
   const result = new Map();
+  if (scheme === "wubi06") {
+    for (const [char, entry] of readChars06()) {
+      result.set(char, entry.radicals.map(([root]) => root.codePointAt(0).toString(16).toUpperCase()));
+    }
+    return result;
+  }
   if (scheme === "wubi86") {
     const lines = readFileSync(resolve(SOURCES, "data-wubi-v86.tsv"), "utf8").split(/\r?\n/);
     for (let i = 1; i < lines.length; i++) {
@@ -187,8 +195,8 @@ function parseDecomposition(scheme) {
 
 function build(scheme) {
   const zigen = readJson(resolve(SOURCES, `zigen-${scheme.slice(-2)}.json`));
-  const layout = readJson(resolve(SOURCES, `layout-${scheme.slice(-2)}.json`));
-  const mnemonic = scheme === "wubi86" ? mnemonic86() : MNEMONIC_98;
+  const layout = scheme === "wubi06" ? null : readJson(resolve(SOURCES, `layout-${scheme.slice(-2)}.json`));
+  const mnemonic = zigen.mnemonics ?? (scheme === "wubi86" ? mnemonic86() : MNEMONIC_98);
 
   // 字根 PUA → 键位（用于常用字根权重）
   const rootKey = new Map();
@@ -197,14 +205,15 @@ function build(scheme) {
   }
 
   const items = KEY_ORDER.map((key) => {
-    const lo = layout.layouts[key] ?? { size: 5, cells: [] };
+    const roots = zigen.roots[key] ?? [];
+    const lo = layout ? (layout.layouts[key] ?? { size: 5, cells: [] }) : layout06(roots);
     return {
       key,
       name: zigen.names[key] ?? "",
       short1: zigen.short1[key] ?? "",
       area: AREA[key],
       mnemonic: mnemonic[key] ?? "",
-      roots: zigen.roots[key] ?? [],
+      roots,
       layout: { size: lo.size, cells: lo.cells },
     };
   });
@@ -212,7 +221,7 @@ function build(scheme) {
   // 常用字根权重：一级常用字拆解中的字根使用频率（仅统计配置中的字根，排除识别码）
   const level1 = parseLevel1();
   const decomp = parseDecomposition(scheme);
-  const ident = scheme === "wubi86" ? IDENT_86 : IDENT_98;
+  const ident = scheme === "wubi98" ? IDENT_98 : IDENT_86;
   const counts = new Map();
   for (const [ch, puas] of decomp) {
     if (!level1.has(ch)) continue;
@@ -238,8 +247,8 @@ function build(scheme) {
 
 function main() {
   const arg = process.argv[2] || "wubi86";
-  if (arg !== "wubi86" && arg !== "wubi98") {
-    console.error(`未知方案：${arg}（可选 wubi86 / wubi98）`);
+  if (!Object.hasOwn(SCHEME_LABELS, arg)) {
+    console.error(`未知方案：${arg}（可选 ${Object.keys(SCHEME_LABELS).join(" / ")}）`);
     process.exit(1);
   }
   build(arg);

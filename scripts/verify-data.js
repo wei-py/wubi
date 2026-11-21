@@ -1,7 +1,7 @@
 /**
  * 数据校验脚本。
  *
- * 用法：node scripts/verify-data.js [wubi86|wubi98]（默认 wubi86）
+ * 用法：node scripts/verify-data.js [wubi86|wubi98|wubi06]（默认 wubi86）
  *
  * 校验规则：
  *   ① chars.radicals 的键位拼接为 code 前缀（允许恰好多 1 位识别码）
@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { SCHEME_LABELS } from "../src/schemes/catalog.js";
 import { WORD_BLACKLIST } from "./build-words.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,7 +58,7 @@ function verify(scheme) {
   const chars = readJson(resolve(ROOT, `src/data/generated/${scheme}/chars.json`));
   const zigen = readJson(resolve(ROOT, `src/data/generated/${scheme}/zigen.json`));
   const cfg = readJson(resolve(SOURCES, `zigen-${suffix}.json`));
-  const layout = readJson(resolve(SOURCES, `layout-${suffix}.json`));
+  const layout = scheme === "wubi06" ? null : readJson(resolve(SOURCES, `layout-${suffix}.json`));
   const common3500 = readJson(resolve(ROOT, "src/data/generated/common3500.json"));
   const words = readJson(resolve(ROOT, "src/data/generated/words.json"));
   const wubi86 =
@@ -93,6 +94,7 @@ function verify(scheme) {
   const zigenIssues = [];
   if (zigen.length !== 25) zigenIssues.push(`键位数 ${zigen.length}（要求 25）`);
   const byKey = new Map(zigen.map((z) => [z.key, z]));
+  const seenRoots = new Set();
   for (const key of KEY_ORDER) {
     const z = byKey.get(key);
     if (!z) {
@@ -104,15 +106,22 @@ function verify(scheme) {
     if (JSON.stringify(z.roots) !== JSON.stringify(cfg.roots[key])) {
       zigenIssues.push(`${key} roots 与配置不一致`);
     }
-    const lo = layout.layouts[key];
-    if (
-      !lo ||
-      z.layout.size !== lo.size ||
-      JSON.stringify(z.layout.cells) !== JSON.stringify(lo.cells)
-    ) {
-      zigenIssues.push(`${key} 布局与配置不一致`);
+    if (layout) {
+      const lo = layout.layouts[key];
+      if (!lo || z.layout.size !== lo.size || JSON.stringify(z.layout.cells) !== JSON.stringify(lo.cells)) {
+        zigenIssues.push(`${key} 布局与配置不一致`);
+      }
+    } else {
+      const displayed = z.layout.cells.map((cell) => cell.cp);
+      if (!z.mnemonic || !z.roots.length || displayed.length > z.layout.size ** 2 ||
+          displayed.join("") !== z.roots.join("")) {
+        zigenIssues.push(`${key} 助记说明、字根或布局不完整`);
+      }
+      for (const root of z.roots) {
+        if (seenRoots.has(root)) zigenIssues.push(`${key} 重复字根 ${root}`);
+        seenRoots.add(root);
+      }
     }
-    // layout 引用的字形都在 roots 中
     const rootSet = new Set(z.roots);
     for (const cell of z.layout.cells) {
       if (cell && !rootSet.has(cell.cp)) {
@@ -139,6 +148,16 @@ function verify(scheme) {
       `与 freq=1 集合不一致（缺 ${missingFreq1.slice(0, 10).join("") || "无"}，` +
         `多 ${extraFreq1.slice(0, 10).join("") || "无"}）`,
     );
+  }
+  if (scheme === "wubi06") {
+    const practice = readJson(resolve(ROOT, "src/data/generated/wubi06/chars.freq1.json"));
+    for (const ch of common3500) {
+      const entry = practice[ch];
+      if (!entry || entry.radicals.length !== entry.code.length ||
+          JSON.stringify(entry) !== JSON.stringify(chars[ch])) {
+        commonIssues.push(`${ch} 缺少完整或一致的新世纪拆分`);
+      }
+    }
   }
 
   // ⑤ 词组表：数量 / 纯汉字 / 去重 / 黑名单
@@ -203,8 +222,8 @@ function verify(scheme) {
 
 function main() {
   const arg = process.argv[2] || "wubi86";
-  if (arg !== "wubi86" && arg !== "wubi98") {
-    console.error(`未知方案：${arg}（可选 wubi86 / wubi98）`);
+  if (!Object.hasOwn(SCHEME_LABELS, arg)) {
+    console.error(`未知方案：${arg}（可选 ${Object.keys(SCHEME_LABELS).join(" / ")}）`);
     process.exit(1);
   }
   if (!verify(arg)) {
