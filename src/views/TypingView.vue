@@ -2,11 +2,13 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import CodeHint from "@/components/CodeHint.vue";
+import MistakeActions from "@/components/MistakeActions.vue";
 import StatsBar from "@/components/StatsBar.vue";
 import TypingProgress from "@/components/TypingProgress.vue";
 import TypingResult from "@/components/TypingResult.vue";
 import VirtualKeyboard from "@/components/VirtualKeyboard.vue";
 import { useFreeText } from "@/composables/useFreeText.js";
+import { useMistakes } from "@/composables/useMistakes.js";
 import { useSave } from "@/composables/useSave.js";
 import { useTypingInput } from "@/composables/useTypingInput.js";
 import { useUiSettings } from "@/composables/useUiSettings.js";
@@ -37,6 +39,7 @@ const {
 const { freeTitle, freeText } = useFreeText();
 
 const levelId = computed(() => String(route.params.id));
+const { record: recordMistake } = useMistakes(levelId);
 const isFree = computed(() => levelId.value === "free");
 const level = computed(() => (isFree.value ? undefined : findLevel(levelId.value)));
 const config = computed(() => level.value?.typing);
@@ -995,6 +998,12 @@ function onText(text) {
     if (!canInput()) break;
     const result = feedChar(session.value, char, Date.now());
     session.value = result.session;
+    for (const event of result.events) {
+      if (event.type !== "wrong") continue;
+      const target = session.value.target[event.index];
+      const code = scheme.value.code(target);
+      if (code) recordMistake(target, code, event.input);
+    }
     if (result.events.some((event) => event.type === "complete")) {
       onTargetComplete();
       break;
@@ -1156,14 +1165,14 @@ function syncFocusRect() {
   caretStyle.value = { left: `${left - 1}px`, top: `${top}px`, height: `${height}px` };
 }
 
-/** 拆字提示卡片：当前待输入字的五笔拆解（跟打模式下仅作参考） */
+/** 跟打提示：当前待输入字的拆分、全码与简码（不参与输入判定） */
 const hintData = computed(() => {
   if (!schemeReady.value || resultVisible.value || session.value.finishedAt !== null) return null;
   const char = session.value.target[session.value.pos];
   if (!char) return null;
   const code = scheme.value.code(char);
   if (!code) return null;
-  return { char, code, items: scheme.value.hint(char) };
+  return { char, code, items: scheme.value.hint(char), shorts: scheme.value.shorts(char) };
 });
 
 /** 长文本跟随当前字滚动；新目标（sessionToken 变化）重新定位；光标与输入框跟随 */
@@ -1269,6 +1278,11 @@ onUnmounted(() => {
       请启用电脑或手机上的真实五笔输入法，点击练习区后输入汉字。此模式接收输入法选字结果，不是直接输入英文字母；Esc
       重新开始当前练习。
     </p>
+    <MistakeActions
+      :level-id="levelId"
+      :char="session.target[session.pos]"
+      :code="schemeReady ? scheme.code(session.target[session.pos]) ?? '' : ''"
+    />
 
     <StatsBar
       :speed="liveStats.speed"
@@ -1381,6 +1395,7 @@ onUnmounted(() => {
         :char="hintData.char"
         :code="hintData.code"
         :items="hintData.items"
+        :shorts="hintData.shorts"
         input=""
       />
 

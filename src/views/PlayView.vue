@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { playKeySound } from "@/audio/sound.js";
 import CodeHint from "@/components/CodeHint.vue";
 import IntroPanel from "@/components/IntroPanel.vue";
+import MistakeActions from "@/components/MistakeActions.vue";
 import ResultModal from "@/components/ResultModal.vue";
 import StatsBar from "@/components/StatsBar.vue";
 import TextPanel from "@/components/TextPanel.vue";
@@ -17,7 +18,6 @@ import { loadArticles, loadRadicalWeights, loadZigen } from "@/data/loader.js";
 import { buildLevelChars, isHan, randomSequence, weightedSequence } from "@/data/pool.js";
 import { parseScript } from "@/data/script.js";
 import { findLevel, stageOfLevel } from "@/data/stages.js";
-import { buildDrillPool } from "@/engine/drill.js";
 import { createSession, feedKey, KEY_BACKSPACE } from "@/engine/judge.js";
 import { MIN_LIVE_WINDOW_MS } from "@/engine/stats.js";
 import { checkTimeout, elapsed, startChar } from "@/engine/timer.js";
@@ -29,8 +29,7 @@ const DRILL_REPEAT = 10;
 const route = useRoute();
 const router = useRouter();
 const { recordResult } = useLevels();
-const { record, markMastered } = useMistakes();
-const { save, recordCharDone, recordCharError } = useSave();
+const { recordCharDone, recordCharError } = useSave();
 const { freeTitle, freeText } = useFreeText();
 const {
   soundOn,
@@ -55,6 +54,8 @@ function testSound() {
 }
 
 const levelId = computed(() => String(route.params.id));
+const mistakeLevelId = computed(() => String(route.query.recallLevel ?? levelId.value));
+const { book, record, markMastered } = useMistakes(mistakeLevelId);
 const isFree = computed(() => levelId.value === "free");
 const level = computed(() => (isFree.value ? undefined : findLevel(levelId.value)));
 const isZigen = computed(() => level.value?.type === "zigen");
@@ -382,47 +383,16 @@ const passed = computed(() => {
 });
 
 const options = computed(() => {
-  if (mode.value === "zigen") {
-    // 字根模式：按「实际打错的字根」列出，加练据此加权出题
-    const list = Object.entries(zigenRootErrors.value).map(([root, count]) => ({
-      id: root,
-      main: root,
-      detail: `错误 ${count} 次`,
+  const list = Object.entries(book.value)
+    .filter(([, item]) => !item.mastered)
+    .map(([char, item]) => ({
+      id: char,
+      main: char,
+      detail: item.count ? `${item.code.toUpperCase()} · 错误 ${item.count} 次` : "主动添加",
     }));
-    const seen = new Set(list.map((o) => o.id));
-    for (const [root, count] of Object.entries(timeoutCounts.value)) {
-      if (seen.has(root)) continue;
-      list.push({ id: root, main: root, detail: `超时 ${count} 次` });
-    }
-    return list;
-  }
-  const s = session.value;
-  const list = [];
-  const seen = new Set();
-  if (s) {
-    for (const it of s.items) {
-      if (it.wrongAttempts.length > 0) {
-        list.push({
-          id: it.char,
-          main: it.char,
-          detail: `${it.code.toUpperCase()} · 错 ${it.wrongAttempts.length} 次 · 最近 ${
-            it.wrongAttempts[it.wrongAttempts.length - 1]
-          }`,
-        });
-        seen.add(it.char);
-      }
-    }
-  }
+  const seen = new Set(list.map((item) => item.id));
   for (const [char, count] of Object.entries(timeoutCounts.value)) {
-    if (seen.has(char)) continue;
-    list.push({ id: char, main: char, detail: `超时 ${count} 次` });
-  }
-  if (list.length === 0) {
-    return buildDrillPool(save.value.stats, 10).map((c) => ({
-      id: c.char,
-      main: c.char,
-      detail: `错误率 ${Math.round(c.errorRate * 100)}% · 均耗时 ${(c.avgMs / 1000).toFixed(1)}s（智能推荐）`,
-    }));
+    if (!seen.has(char)) list.push({ id: char, main: char, detail: `超时 ${count} 次` });
   }
   return list;
 });
@@ -528,6 +498,7 @@ function handleZigenKey(key) {
     if (task) {
       // 记录实际打错的字根（按字根聚合，供加练加权）
       zigenRootErrors.value[task.root] = (zigenRootErrors.value[task.root] ?? 0) + 1;
+      record(task.root, task.key, key);
     }
     zigenWrong.value[zigenIndex.value] = true;
     currentError.value = `按错了，请继续按 ${expect.toUpperCase()}，答对后才进入下一题。`;
@@ -664,13 +635,22 @@ async function startRound() {
     }
     articleTitle.value = freeTitle.value || "自由练习";
     const text = freeText.value;
-    initText([...text].filter(isHan));
+    initText([...text].filter(isHan), Boolean(route.query.recallLevel));
     buildDisplay(text);
     return;
   }
   const lv = level.value;
   if (!lv) return;
   if (lv.type === "intro") return;
+  if (lv.type === "zigen" && route.query.mistakes) {
+    const ids = Object.entries(book.value)
+      .filter(([, item]) => route.query.mistakes === "all" || !item.mastered)
+      .map(([char]) => char);
+    if (ids.length) {
+      onPractice(ids);
+      return;
+    }
+  }
   parsedScript.value = null;
   if (lv.type === "zigen") {
     initZigen(
@@ -789,6 +769,12 @@ onUnmounted(() => {
         :input="currentHint.input"
         :shorts="currentHint.shorts"
         :guide="currentHint.guide"
+      />
+
+      <MistakeActions
+        :level-id="mistakeLevelId"
+        :char="isZigen ? zigenQueue[zigenIndex]?.root : currentHint?.char"
+        :code="isZigen ? zigenQueue[zigenIndex]?.key : currentHint?.code"
       />
 
       <div class="keyboard-wrap">

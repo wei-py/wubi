@@ -5,26 +5,3 @@ export function isFasterThanMedian(ms, samples) {
   const mid = sorted[Math.floor(sorted.length / 2)];
   return ms <= mid;
 }
-
-/**
- * 构建智能加练池：按 0.6×错误率 + 0.4×平均耗时（均归一化）降序排序。
- * 仅保留有错误或耗时为 0 之外的样本；返回前 limit 个。
- */
-export function buildDrillPool(stats, limit = 10) {
-  const entries = Object.entries(stats).map(([char, s]) => {
-    const attempts = Math.max(1, s.attempts);
-    return { char, errorRate: s.errors / attempts, avgMs: s.totalMs / attempts };
-  });
-  if (entries.length === 0) return [];
-
-  const maxError = Math.max(...entries.map((e) => e.errorRate), 0.0001);
-  const maxMs = Math.max(...entries.map((e) => e.avgMs), 1);
-
-  return entries
-    .map((e) => ({
-      ...e,
-      score: 0.6 * (e.errorRate / maxError) + 0.4 * (e.avgMs / maxMs),
-    }))
-    .sort((a, b) => b.score - a.score || a.char.localeCompare(b.char))
-    .slice(0, limit);
-}

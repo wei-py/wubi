@@ -1,54 +1,64 @@
-import { computed } from "vue";
+import { computed, toValue } from "vue";
 
 import { flushSave, useSave } from "./useSave.js";
 
-/** 错题本：变更立即写入统一存档，不依赖防抖或页面退出事件。 */
-export function useMistakes() {
+/** 每关独立的错题本；所有变更立即保存。 */
+export function useMistakes(levelId) {
   const { save } = useSave();
+  const book = computed(() => save.value.mistakesByLevel[toValue(levelId)] ?? {});
 
-  const book = computed(() => save.value.mistakes);
+  function createEntry(code) {
+    return { code, count: 0, lastWrongInputs: [], lastAt: Date.now(), mastered: false };
+  }
+
+  function put(char, entry) {
+    const id = toValue(levelId);
+    save.value.mistakesByLevel[id] ??= {};
+    save.value.mistakesByLevel[id][char] = entry;
+    flushSave();
+  }
+
+  /** 主动收藏不虚增错误次数；重复添加只恢复待复习状态。 */
+  function add(char, code) {
+    const entry = book.value[char];
+    if (entry && !entry.mastered) return false;
+    put(char, entry ? { ...entry, mastered: false } : createEntry(code));
+    return true;
+  }
 
   function record(char, code, actual) {
-    const entry = save.value.mistakes[char] ?? {
-      code,
-      count: 0,
-      lastWrongInputs: [],
-      lastAt: 0,
-      mastered: false,
-    };
+    const entry = book.value[char] ?? createEntry(code);
     entry.code = code;
     entry.count += 1;
     entry.lastWrongInputs = [actual, ...entry.lastWrongInputs].slice(0, 5);
     entry.lastAt = Date.now();
     entry.mastered = false;
-    save.value.mistakes[char] = entry;
-    flushSave();
+    put(char, entry);
   }
 
   function markMastered(char) {
-    const entry = save.value.mistakes[char];
+    const entry = book.value[char];
     if (entry && !entry.mastered) {
       entry.mastered = true;
       flushSave();
     }
   }
 
-  /** 未掌握（默认出现）的错题列表 */
   function pending() {
-    return Object.entries(save.value.mistakes).filter(([, entry]) => !entry.mastered);
+    return Object.entries(book.value).filter(([, entry]) => !entry.mastered);
   }
 
   function clear(char) {
-    if (save.value.mistakes[char]) {
-      delete save.value.mistakes[char];
+    if (book.value[char]) {
+      delete book.value[char];
       flushSave();
     }
   }
 
   function reset() {
-    save.value.mistakes = {};
+    delete save.value.mistakesByLevel[toValue(levelId)];
     flushSave();
   }
 
-  return { book, record, markMastered, pending, clear, reset };
+  return { book, add, record, markMastered, pending, clear, reset };
 }

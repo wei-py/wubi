@@ -1,19 +1,11 @@
 import { defineStore, storeToRefs } from "pinia";
 import { ref } from "vue";
+import { readScheme } from "../schemes/catalog.js";
 
-const SCHEME_KEY = "wubi-learning.ui.scheme";
 const RANK_ORDER = ["S", "A", "B", "C"];
 
-function currentScheme() {
-  try {
-    return localStorage.getItem(SCHEME_KEY) === "wubi86" ? "wubi86" : "wubi98";
-  } catch {
-    return "wubi98";
-  }
-}
-
 // A scheme switch is applied by reloading the page; each scheme has its own save.
-const KEY = `wubi-learning.save.${currentScheme()}`;
+const KEY = `wubi-learning.save.${readScheme()}`;
 
 function higherRank(a, b) {
   if (!a) return b;
@@ -26,7 +18,7 @@ function emptySave() {
     version: 2,
     exportedAt: 0,
     progress: { levels: {} },
-    mistakes: {},
+    mistakesByLevel: {},
     stats: {},
     typing: {},
     records: {},
@@ -38,7 +30,10 @@ function saveData(data) {
     version: 2,
     exportedAt: data.exportedAt ?? 0,
     progress: { levels: data.progress?.levels ?? {} },
-    mistakes: data.mistakes ?? {},
+    // 旧错题没有来源关卡，只能单独保留，不能猜测或复制到各关。
+    mistakesByLevel: data.mistakesByLevel ?? (
+      Object.keys(data.mistakes ?? {}).length ? { legacy: data.mistakes } : {}
+    ),
     stats: data.stats ?? {},
     typing: data.typing ?? {},
     records: data.records ?? {},
