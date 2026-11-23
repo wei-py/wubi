@@ -608,77 +608,68 @@ async function setupSprint(cfgValue) {
   return true;
 }
 
-// ---------- 逐段提速 / 综合测试共用段落状态 ----------
+// ---------- 逐段提速 / 毕业综合（S6） ----------
+const segments = ref([]);
 const segmentIndex = ref(0);
 const segmentRecords = ref([]);
 
-function addSegmentRecord(record) {
-  segmentRecords.value = [...segmentRecords.value, record];
-}
-
-// ---------- 逐段提速（S6） ----------
-const speedSegments = ref([]);
-
-function speedupThreshold(index) {
-  const list = config.value?.speedup ?? [];
-  if (list.length === 0) return require.value.speed || 60;
-  return list[Math.min(index, list.length - 1)];
-}
-
-function startSpeedupSegment(index) {
-  if (index < 0 || index >= speedSegments.value.length) return;
+function startSegment(index) {
   segmentIndex.value = index;
-  startTarget(speedSegments.value[index]);
+  startTarget(segments.value[index].chars);
 }
 
-function completeSpeedupSegment() {
+function resetSegments() {
+  segmentRecords.value = segments.value.map(() => null);
+  startSegment(0);
+}
+
+function completeSegment() {
   const index = segmentIndex.value;
   const record = makeRecord();
-  const threshold = speedupThreshold(index);
+  const threshold = segments.value[index].speed;
+  // A retry replaces this segment's result, without counting it twice or filling skipped segments.
+  const records = segmentRecords.value;
+  records[index] = record;
+  const following = records.findIndex((entry, i) => i > index && !entry);
+  const nextIndex = following >= 0 ? following : records.indexOf(null);
+  const advance = () => {
+    if (nextIndex >= 0) startSegment(nextIndex);
+    else finishSegmentedLevel();
+  };
+
   if (record.speed < threshold) {
     showResult({
       title: `第 ${index + 1} 段未达标`,
       passed: false,
-      passLabel: `本段要求 ≥${threshold} 字/分`,
+      passLabel: `本段目标 ≥${threshold} 字/分`,
       record,
-      retry: () => startSpeedupSegment(index),
-      nextLabel: index + 1 < speedSegments.value.length ? "继续下一段" : "查看总成绩",
-      next: () => {
-        addSegmentRecord(record);
-        if (index + 1 < speedSegments.value.length) startSpeedupSegment(index + 1);
-        else finishSpeedupLevel();
-      },
+      retry: () => startSegment(index),
+      nextLabel: nextIndex >= 0 ? `练习第 ${nextIndex + 1} 段` : "查看总成绩",
+      next: advance,
     });
-    return;
+  } else if (nextIndex < 0) {
+    advance();
+  } else {
+    showBanner(
+      `第 ${index + 1} 段达标 · ${record.speed.toFixed(0)} 字/分 · 即将进入第 ${nextIndex + 1} 段`,
+    );
+    scheduleAdvance(advance);
   }
-  addSegmentRecord(record);
-  if (index + 1 >= speedSegments.value.length) {
-    finishSpeedupLevel();
-    return;
-  }
-  showBanner(
-    `第 ${index + 1} 段达标 · ${record.speed.toFixed(0)} 字/分 · 即将进入第 ${index + 2} 段`,
-  );
-  scheduleAdvance(() => startSpeedupSegment(index + 1));
 }
 
-function finishSpeedupLevel() {
-  const merged = mergeRecords(segmentRecords.value);
+function finishSegmentedLevel() {
+  const records = segmentRecords.value;
+  const merged = mergeRecords(records);
   const rank = rankFromSpeed(merged.speed, require.value.speed || 60, merged.accuracy);
-  const passed = segmentRecords.value.every(
-    (record, index) => record.speed >= speedupThreshold(index),
-  );
+  const passed = records.every((record, index) => record.speed >= segments.value[index].speed);
   recordLevelResult(levelId.value, merged.speed, merged.accuracy, passed, 0, rank);
   showResult({
-    title: `${level.value?.title ?? "逐段提速"} · 练习完成`,
+    title: `${pageTitle.value} · 练习完成`,
     passed,
-    passLabel: `共 ${speedSegments.value.length} 段 · 平均 ${merged.speed.toFixed(0)} 字/分`,
+    passLabel: `共 ${records.length} 段 · 平均 ${merged.speed.toFixed(0)} 字/分`,
     rank,
     record: merged,
-    retry: () => {
-      segmentRecords.value = [];
-      startSpeedupSegment(0);
-    },
+    retry: resetSegments,
   });
 }
 
@@ -686,24 +677,49 @@ async function setupSpeedup(cfgValue) {
   // 宋词 / 古文内容默认居中（仍可手动切换）
   setAlign("center");
   const chosen = await loadChosenArticles(cfgValue.articleIds);
-  const segments = chosen
+  const targets = chosen
     .flatMap((article) => article.paragraphs.map((paragraph) => hanChars(paragraph)))
     .filter((chars) => chars.length > 0);
-  if (segments.length === 0) {
+  if (targets.length === 0) {
     router.replace("/");
     return false;
   }
-  speedSegments.value = segments;
-  segmentRecords.value = [];
-  startSpeedupSegment(0);
+  const speeds = cfgValue.speedup ?? [];
+  segments.value = targets.map((chars, index) => ({
+    chars,
+    speed: speeds[Math.min(index, speeds.length - 1)] ?? (require.value.speed || 60),
+  }));
+  resetSegments();
   return true;
 }
 
 // ---------- 耐力 / 综合跟打（marathon：文章或数组源一次打完） ----------
 const marathonDisplay = ref(null);
+const marathonParagraphs = ref([]);
+const marathonIndex = ref(-1);
+
+function restartMarathon() {
+  const { chars, items } = marathonDisplay.value;
+  startTarget(chars, items);
+}
+
+function startMarathonAt(index) {
+  marathonIndex.value = index;
+  marathonDisplay.value = buildDisplay(marathonParagraphs.value.slice(Math.max(index, 0)).join("\n"));
+  restartMarathon();
+}
 
 function finishMarathon() {
   const record = makeRecord();
+  if (marathonIndex.value >= 0) {
+    showResult({
+      title: `${pageTitle.value} · 从第 ${marathonIndex.value + 1} 段开始的练习完成`,
+      passLabel: "仅本次练习成绩，不计入整篇挑战",
+      record,
+      retry: restartMarathon,
+    });
+    return;
+  }
   const passed = record.speed >= require.value.speed && record.accuracy >= require.value.accuracy;
   const rank = rankFromSpeed(record.speed, require.value.speed, record.accuracy);
   recordLevelResult(levelId.value, record.speed, record.accuracy, passed, 0, rank);
@@ -715,29 +731,30 @@ function finishMarathon() {
     passLabel: `≥${require.value.speed} 字/分 · 正确率 ≥${Math.round(require.value.accuracy * 100)}%`,
     rank,
     record,
-    retry: () => {
-      const built = marathonDisplay.value;
-      if (built) startTarget(built.chars, built.items);
-    },
+    retry: restartMarathon,
   });
 }
 
 async function setupMarathon(cfgValue) {
-  // 文章源：保留标点排版；数组源（综合关）：每次进入随机抽样 200 字/词，一次打完
-  const built =
-    cfgValue.source === "article"
-      ? buildDisplay(
-          (await loadChosenArticles(cfgValue.articleIds))
-            .map((article) => article.paragraphs.join("\n"))
-            .join("\n"),
-        )
-      : await buildArrayTarget(cfgValue);
+  if (cfgValue.source === "article") {
+    const articles = await loadChosenArticles(cfgValue.articleIds);
+    const paragraphs = articles.flatMap((article) => article.paragraphs);
+    if (paragraphs.some((paragraph) => hanChars(paragraph).length > 0)) {
+      marathonParagraphs.value = paragraphs;
+      startMarathonAt(-1);
+      return true;
+    }
+    router.replace("/");
+    return false;
+  }
+  // 数组源（综合关）每次进入随机抽样 200 字/词，一次打完。
+  const built = await buildArrayTarget(cfgValue);
   if (built.chars.length === 0) {
     router.replace("/");
     return false;
   }
   marathonDisplay.value = built;
-  startTarget(built.chars, built.items);
+  restartMarathon();
   return true;
 }
 
@@ -811,69 +828,9 @@ async function setupEndless(cfgValue) {
 }
 
 // ---------- 毕业综合（S6） ----------
-const gauntletTargets = ref([]);
-const gauntletSpeeds = ref([]);
-
-function startGauntletSegment(index) {
-  if (index < 0 || index >= gauntletTargets.value.length) return;
-  segmentIndex.value = index;
-  startTarget(gauntletTargets.value[index]);
-}
-
-function completeGauntletSegment() {
-  const index = segmentIndex.value;
-  const record = makeRecord();
-  const threshold = gauntletSpeeds.value[index] ?? 60;
-  if (record.speed < threshold) {
-    showResult({
-      title: `第 ${index + 1} 段未达标`,
-      passed: false,
-      passLabel: `本段要求 ≥${threshold} 字/分`,
-      record,
-      retry: () => startGauntletSegment(index),
-      nextLabel: index + 1 < gauntletTargets.value.length ? "继续下一段" : "查看总成绩",
-      next: () => {
-        addSegmentRecord(record);
-        if (index + 1 < gauntletTargets.value.length) startGauntletSegment(index + 1);
-        else finishGauntlet();
-      },
-    });
-    return;
-  }
-  addSegmentRecord(record);
-  if (index + 1 >= gauntletTargets.value.length) {
-    finishGauntlet();
-    return;
-  }
-  showBanner(
-    `第 ${index + 1} 段达标 · ${record.speed.toFixed(0)} 字/分 · 即将进入第 ${index + 2} 段`,
-  );
-  scheduleAdvance(() => startGauntletSegment(index + 1));
-}
-
-function finishGauntlet() {
-  const merged = mergeRecords(segmentRecords.value);
-  const rank = rankFromSpeed(merged.speed, require.value.speed || 60, merged.accuracy);
-  const passed = segmentRecords.value.every(
-    (record, index) => record.speed >= (gauntletSpeeds.value[index] ?? 60),
-  );
-  recordLevelResult(levelId.value, merged.speed, merged.accuracy, passed, 0, rank);
-  showResult({
-    title: `${level.value?.title ?? "毕业综合"} · 练习完成`,
-    passed,
-    passLabel: `共 ${gauntletTargets.value.length} 段 · 平均 ${merged.speed.toFixed(0)} 字/分`,
-    rank,
-    record: merged,
-    retry: () => {
-      segmentRecords.value = [];
-      startGauntletSegment(0);
-    },
-  });
-}
 
 async function setupGauntlet(cfgValue) {
   const targets = [];
-  const speeds = [];
   for (const segment of cfgValue.segments ?? []) {
     let chars = [];
     if (segment.source === "article") {
@@ -887,20 +844,44 @@ async function setupGauntlet(cfgValue) {
       const limited = typeof segment.count === "number" ? picked.slice(0, segment.count) : picked;
       chars = shuffle(limited.flatMap((item) => hanChars(item)));
     }
-    if (chars.length > 0) {
-      targets.push(chars);
-      speeds.push(segment.speed);
-    }
+    if (chars.length > 0) targets.push({ chars, speed: segment.speed ?? 60 });
   }
   if (targets.length === 0) {
     router.replace("/");
     return false;
   }
-  gauntletTargets.value = targets;
-  gauntletSpeeds.value = speeds;
-  segmentRecords.value = [];
-  startGauntletSegment(0);
+  segments.value = targets;
+  resetSegments();
   return true;
+}
+
+const progressOptions = computed(() => {
+  if (segments.value.length > 0) {
+    return segments.value.map((_, index) => ({
+      index,
+      label: `第 ${index + 1} 段${segmentRecords.value[index] ? " · 已练" : ""}`,
+    }));
+  }
+  if (marathonParagraphs.value.length > 0) {
+    return [
+      { index: -1, label: "从头开始（整篇挑战）" },
+      ...marathonParagraphs.value.flatMap((paragraph, index) =>
+        hanChars(paragraph).length > 0
+          ? [{ index, label: `第 ${index + 1} 段 · ${paragraph.trim().slice(0, 12)}` }]
+          : [],
+      ),
+    ];
+  }
+  return [];
+});
+const selectedProgress = computed(() =>
+  segments.value.length > 0 ? segmentIndex.value : marathonIndex.value,
+);
+
+function selectProgress(index) {
+  if (index === selectedProgress.value) return;
+  if (segments.value.length > 0) startSegment(index);
+  else startMarathonAt(index);
 }
 
 // ---------- 自由模式 ----------
@@ -966,16 +947,14 @@ function onTargetComplete() {
       finishSprint();
       break;
     case "speedup":
-      completeSpeedupSegment();
+    case "gauntlet":
+      completeSegment();
       break;
     case "marathon":
       finishMarathon();
       break;
     case "endless":
       finishEndless();
-      break;
-    case "gauntlet":
-      completeGauntletSegment();
       break;
     default:
       finishFree();
@@ -1043,18 +1022,14 @@ function restart() {
       startTarget(sprintPool.value);
       break;
     case "speedup":
-      startSpeedupSegment(segmentIndex.value);
+    case "gauntlet":
+      startSegment(segmentIndex.value);
       break;
-    case "marathon": {
-      const built = marathonDisplay.value;
-      if (built) startTarget(built.chars, built.items);
+    case "marathon":
+      restartMarathon();
       break;
-    }
     case "endless":
       startTarget(endlessPool.value);
-      break;
-    case "gauntlet":
-      startGauntletSegment(segmentIndex.value);
       break;
     default:
       setupFree();
@@ -1077,12 +1052,17 @@ const modeInfo = computed(() => {
     case "sprint":
       return `剩余 ${formatClock(sprintRemaining.value)} · 目标 ${goalChars.value} 字`;
     case "speedup":
-      return `第 ${segmentIndex.value + 1}/${speedSegments.value.length} 段 · 本段要求 ≥${speedupThreshold(segmentIndex.value)} 字/分`;
+    case "gauntlet": {
+      const index = segmentIndex.value;
+      const practiced = segmentRecords.value.filter(Boolean).length;
+      return `第 ${index + 1}/${segments.value.length} 段 · 已练 ${practiced} 段 · 本段目标 ≥${segments.value[index]?.speed} 字/分`;
+    }
     case "endless":
       return `已打 ${liveStats.value.done} 字 · 纪录 ${endlessBest.value} 字 · 剩余错误 ${endlessRemaining.value} 次`;
-    case "gauntlet":
-      return `第 ${segmentIndex.value + 1}/${gauntletTargets.value.length} 段 · 本段要求 ≥${gauntletSpeeds.value[segmentIndex.value] ?? 0} 字/分`;
     case "marathon":
+      if (marathonIndex.value >= 0) {
+        return `从第 ${marathonIndex.value + 1} 段开始 · 不计整篇挑战成绩`;
+      }
       return `一次打完 · 达标 ≥${require.value.speed} 字/分 · 正确率 ≥${Math.round(require.value.accuracy * 100)}%`;
     default:
       return "自由练习 · 不计关卡进度";
@@ -1295,6 +1275,27 @@ onUnmounted(() => {
 
     <p v-if="ready && !resultVisible" class="typing__mode">{{ modeInfo }}</p>
 
+    <div v-if="ready && progressOptions.length" class="typing__progress">
+      <label for="typing-progress">选择练习进度</label>
+      <select
+        id="typing-progress"
+        name="typing-progress"
+        :value="selectedProgress"
+        aria-describedby="typing-progress-help"
+        @change="selectProgress(Number($event.target.value))"
+        @keydown.esc.stop
+      >
+        <option v-for="option in progressOptions" :key="option.index" :value="option.index">
+          {{ option.label }}
+        </option>
+      </select>
+      <p id="typing-progress-help" class="typing__mode">
+        {{ segments.length
+          ? "可跳到任意段；切换会重开当前输入，已练段落保留。完成所有段落后计总成绩。"
+          : "可从任意段开始跟打；只有从头打完整篇才计挑战成绩。" }}
+      </p>
+    </div>
+
     <div v-if="ready && !resultVisible && isClimb" class="typing__climb-bar">
       <span class="typing__climb-label">参考速度</span>
       <span class="typing__climb-group">
@@ -1487,6 +1488,17 @@ onUnmounted(() => {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 12px;
+}
+.typing__progress {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  font-size: 14px;
+}
+.typing__progress select {
+  max-inline-size: 100%;
+  min-block-size: 48px;
+  font-size: 1rem;
 }
 .typing__climb-bar {
   display: flex;
