@@ -13,7 +13,7 @@ import { useSave } from "@/composables/useSave.js";
 import { useTypingInput } from "@/composables/useTypingInput.js";
 import { useUiSettings } from "@/composables/useUiSettings.js";
 import { loadArticles, loadCommon3500, loadWords, loadZigen } from "@/data/loader.js";
-import { findLevel } from "@/data/stages.js";
+import { findLevel, stageOfLevel } from "@/data/stages.js";
 import { rankFromChars, rankFromEndlessChars, rankFromSpeed } from "@/engine/rank.js";
 import { MIN_LIVE_WINDOW_MS } from "@/engine/stats.js";
 import {
@@ -42,6 +42,7 @@ const levelId = computed(() => String(route.params.id));
 const { record: recordMistake } = useMistakes(levelId);
 const isFree = computed(() => levelId.value === "free");
 const level = computed(() => (isFree.value ? undefined : findLevel(levelId.value)));
+const canJump = computed(() => stageOfLevel(levelId.value)?.id === "s6");
 const config = computed(() => level.value?.typing);
 const mode = computed(() => (isFree.value ? "free" : (config.value?.mode ?? "climb")));
 const require = computed(() => level.value?.require ?? { speed: 0, accuracy: 0 });
@@ -69,6 +70,9 @@ const { focus: focusInput } = useTypingInput(inputEl, {
 const panelBox = ref(null);
 const ready = ref(false);
 const session = ref(createTypingSession([]));
+const fullTarget = ref([]);
+const startIndex = ref(0);
+const activeIndex = computed(() => startIndex.value + session.value.pos);
 const now = ref(Date.now());
 /** 显示项（含标点/换行装饰）：为空时按纯汉字流渲染 */
 const display = ref(null);
@@ -148,7 +152,7 @@ const keySpeed = computed(() => {
 });
 const displayDone = computed(() => liveStats.value.done);
 const displayTotal = computed(() => {
-  if (mode.value === "sprint" || mode.value === "endless") {
+  if (startIndex.value === 0 && (mode.value === "sprint" || mode.value === "endless")) {
     return goalChars.value || session.value.target.length;
   }
   return session.value.target.length;
@@ -373,17 +377,52 @@ function scheduleAdvance(action) {
 }
 
 function startTarget(chars, items = null) {
+  fullTarget.value = chars;
+  display.value = items;
+  sessionToken.value += 1;
+  startAttempt(0);
+}
+
+function startAttempt(index) {
   clearAdvance();
   resultVisible.value = false;
   resultRecord.value = null;
-  display.value = items;
   keyCount.value = 0;
-  session.value = createTypingSession(chars);
-  sessionToken.value += 1;
+  startIndex.value = index;
+  session.value = createTypingSession(index === 0 ? fullTarget.value : fullTarget.value.slice(index));
   now.value = Date.now();
   void nextTick(() => {
     syncFocusRect();
     focusInput();
+  });
+}
+
+function jumpTo(index) {
+  if (!canJump.value || !canInput() || index === activeIndex.value) return;
+  if (index >= 0 && index < fullTarget.value.length) startAttempt(index);
+}
+
+function onStageClick(event) {
+  const index = event.target.closest(".tv-char")?.dataset.index;
+  if (index !== undefined && !window.getSelection()?.toString()) jumpTo(Number(index));
+  focusInput();
+}
+
+function onPositionKey(event) {
+  if (!canJump.value || !canInput() || event.isComposing) return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+  if (!step) return;
+  event.preventDefault();
+  jumpTo(activeIndex.value + step);
+}
+
+function finishPositionPractice() {
+  const index = startIndex.value;
+  showResult({
+    title: "定位练习结束",
+    passLabel: "仅显示本次练习成绩，不计入挑战成绩",
+    retry: () => startAttempt(index),
   });
 }
 
@@ -578,6 +617,7 @@ function sprintExpired() {
 
 function finishSprint() {
   if (resultVisible.value) return;
+  if (startIndex.value > 0) return finishPositionPractice();
   const record = makeRecord();
   const done = session.value.pos;
   const target = config.value?.charTarget ?? 0;
@@ -797,6 +837,7 @@ function buildWordMix(words, size) {
 
 function finishEndless() {
   if (resultVisible.value) return;
+  if (startIndex.value > 0) return finishPositionPractice();
   const record = makeRecord();
   const done = session.value.pos;
   if (done > getEndlessBest()) recordEndlessBest(done);
@@ -939,6 +980,7 @@ function onKey(code) {
 }
 
 function onTargetComplete() {
+  if (startIndex.value > 0) return finishPositionPractice();
   switch (mode.value) {
     case "climb":
       completeClimbGroup();
@@ -1070,25 +1112,25 @@ const modeInfo = computed(() => {
 });
 
 function charClass(index) {
-  const pos = session.value.pos;
+  const pos = activeIndex.value;
   return {
-    "tv-char--done": index < pos,
+    "tv-char--done": index >= startIndex.value && index < pos,
     "tv-char--active": index === pos,
     "tv-char--error": index === pos && session.value.errorSlot !== null,
-    "tv-char--pending": index > pos,
+    "tv-char--pending": index < startIndex.value || index > pos,
   };
 }
 
-function displayChar(index) {
-  if (index === session.value.pos && session.value.errorSlot !== null) {
+function displayChar(item) {
+  if (item.index === activeIndex.value && session.value.errorSlot !== null) {
     return session.value.errorSlot;
   }
-  return session.value.target[index] ?? "";
+  return item.char;
 }
 
 /** 渲染序列：有装饰项（标点/换行）用原文排版，否则按纯汉字流 */
 const displayItems = computed(
-  () => display.value ?? session.value.target.map((char, index) => ({ kind: "char", char, index })),
+  () => display.value ?? fullTarget.value.map((char, index) => ({ kind: "char", char, index })),
 );
 
 /** 网格布局（爬坡 / 毕业综合）：与文本面板网格一致，不提供对齐切换 */
@@ -1157,7 +1199,7 @@ const hintData = computed(() => {
 
 /** 长文本跟随当前字滚动；新目标（sessionToken 变化）重新定位；光标与输入框跟随 */
 watch(
-  () => [sessionToken.value, session.value.pos, session.value.errorSlot],
+  () => [sessionToken.value, activeIndex.value, session.value.errorSlot],
   async () => {
     await nextTick();
     const el = panelBox.value?.querySelector('.tv-char[data-active="true"]');
@@ -1258,6 +1300,9 @@ onUnmounted(() => {
       请启用电脑或手机上的真实五笔输入法，点击练习区后输入汉字。此模式接收输入法选字结果，不是直接输入英文字母；Esc
       重新开始当前练习。
     </p>
+    <p v-if="canJump" class="typing__instruction">
+      点击任意字即可从那里开始，也可用 ← / → 移动。跳到中途重新计时，不计挑战成绩。
+    </p>
     <MistakeActions
       :level-id="levelId"
       :char="session.target[session.pos]"
@@ -1320,7 +1365,7 @@ onUnmounted(() => {
     <p v-if="!ready" class="typing__loading">加载中…</p>
 
     <template v-else-if="!resultVisible">
-      <section class="typing__stage" @click="focusInput">
+      <section class="typing__stage" @click="onStageClick">
         <div v-if="advancePending" class="typing__banner" role="status">{{ bannerText }}</div>
         <div v-if="ready && !isGridLayout" class="typing__align">
           <span class="typing__align-group">
@@ -1345,7 +1390,7 @@ onUnmounted(() => {
         <div
           ref="panelBox"
           class="typing__target"
-          :class="targetClasses"
+          :class="[targetClasses, { 'typing__target--jump': canJump }]"
           @scroll.passive="syncFocusRect"
         >
           <!-- 隐藏输入框与光标跟随当前待输入字（IME 候选框随之定位） -->
@@ -1358,6 +1403,7 @@ onUnmounted(() => {
             autocorrect="off"
             spellcheck="false"
             aria-label="跟打输入"
+            @keydown="onPositionKey"
           />
           <span v-if="caretVisible" class="typing__caret" :style="caretStyle"></span>
           <template v-for="(item, i) in displayItems" :key="`${sessionToken}-${i}-${item.kind}`">
@@ -1368,13 +1414,13 @@ onUnmounted(() => {
               class="tv-char"
               :class="charClass(item.index)"
               :data-index="item.index"
-              :data-active="item.index === session.pos ? 'true' : undefined"
+              :data-active="item.index === activeIndex ? 'true' : undefined"
               :title="
-                item.index === session.pos && session.errorSlot
+                item.index === activeIndex && session.errorSlot
                   ? `错误输入：${session.errorSlot} · 正确：${item.char}`
                   : undefined
               "
-            >{{ displayChar(item.index) }}</span>
+            >{{ displayChar(item) }}</span>
           </template>
         </div>
         <p v-if="session.errorSlot" class="typing__error-hint">
@@ -1633,6 +1679,12 @@ onUnmounted(() => {
   scrollbar-width: thin;
   font-size: 28px;
   line-height: 1.8;
+}
+.typing__target--jump .tv-char {
+  cursor: pointer;
+}
+.typing__target--jump .tv-char:hover {
+  text-decoration: underline;
 }
 .tv-char--pending {
   color: var(--text-pending);
