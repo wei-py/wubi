@@ -602,6 +602,7 @@ function onReshuffle() {
 
 // ---------- 限时冲刺（S6） ----------
 const sprintPool = ref([]);
+const sprintUntimed = ref(false);
 const sprintRemaining = computed(() => {
   const duration = config.value?.durationSec ?? 180;
   const startAt = session.value.startAt;
@@ -610,6 +611,7 @@ const sprintRemaining = computed(() => {
 });
 
 function sprintExpired() {
+  if (sprintUntimed.value) return false;
   const startAt = session.value.startAt;
   if (startAt === null) return false;
   return Date.now() - startAt >= (config.value?.durationSec ?? 180) * 1000;
@@ -617,6 +619,15 @@ function sprintExpired() {
 
 function finishSprint() {
   if (resultVisible.value) return;
+  if (sprintUntimed.value) {
+    const index = startIndex.value;
+    showResult({
+      title: "不限时练习结束",
+      passLabel: "仅显示本次练习成绩，不计入限时冲刺纪录",
+      retry: () => startAttempt(index),
+    });
+    return;
+  }
   if (startIndex.value > 0) return finishPositionPractice();
   const record = makeRecord();
   const done = session.value.pos;
@@ -1092,7 +1103,9 @@ const modeInfo = computed(() => {
       if (totalGroups.value === 0) return "";
       return `第 ${Math.min(currentGroup.value + 1, totalGroups.value)}/${totalGroups.value} 组 · 每组 ${groupSize.value} ${climbSourceUnit.value}`;
     case "sprint":
-      return `剩余 ${formatClock(sprintRemaining.value)} · 目标 ${goalChars.value} 字`;
+      return sprintUntimed.value
+        ? "不限时练习 · 不计入限时冲刺纪录"
+        : `剩余 ${formatClock(sprintRemaining.value)} · 目标 ${goalChars.value} 字`;
     case "speedup":
     case "gauntlet": {
       const index = segmentIndex.value;
@@ -1290,6 +1303,10 @@ onUnmounted(() => {
       <button type="button" class="typing__back" @click="goBack">← 返回</button>
       <h1 class="typing__title">{{ pageTitle }}</h1>
       <div class="typing__actions">
+        <label v-if="ready && mode === 'sprint'">
+          <input v-model="sprintUntimed" type="checkbox" @change="startAttempt(startIndex)" />
+          不限时练习（切换会重开）
+        </label>
         <button v-if="isClimb" type="button" class="typing__btn" @click="reshuffleOpen = true">
           重新随机
         </button>
@@ -1449,6 +1466,9 @@ onUnmounted(() => {
       <div class="typing__bottom">
         <div v-if="mode === 'endless'" class="typing__tools">
           <button type="button" class="typing__btn" @click="finishEndless">结束本局</button>
+        </div>
+        <div v-if="mode === 'sprint' && sprintUntimed" class="typing__tools">
+          <button type="button" class="typing__btn" @click="finishSprint">结束练习</button>
         </div>
         <VirtualKeyboard :press="pressedKey" :zigen="zigenMap" :interactive="false" />
       </div>
