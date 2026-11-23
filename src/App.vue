@@ -25,7 +25,7 @@ const navigation = [
   { path: "/", title: "课程" },
   { path: "/free", title: "练习" },
   { path: "/reference", title: "速查" },
-  { path: "/strokes", title: "笔画" },
+  { path: "/lookup", title: "查字" },
   { path: "/recall", title: "回忆" },
 ];
 const active = computed(() =>

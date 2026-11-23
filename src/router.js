@@ -7,10 +7,10 @@ const routes = [
   { path: "/free", name: "free", component: () => import("./views/FreeView.vue") },
   { path: "/reference", name: "reference", component: () => import("./views/ReferenceView.vue") },
   {
-    path: "/strokes",
-    name: "strokes",
-    component: () => import("./views/StrokeLookupView.vue"),
-    meta: { title: "笔画查询" },
+    path: "/lookup",
+    name: "lookup",
+    component: () => import("./views/WubiLookupView.vue"),
+    meta: { title: "五笔查字" },
   },
   { path: "/recall", name: "recall", component: () => import("./views/RecallView.vue") },
   {
