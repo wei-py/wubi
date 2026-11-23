@@ -1,8 +1,11 @@
 /**
- * 所有 generated JSON 的懒加载器（构建期静态展开，支持方案化路径）。
- * 数据由 `pnpm data:build` 生成到 src/data/generated/{scheme}/。
+ * 五笔码表和练习数据的懒加载器（构建期静态展开，支持方案化路径）。
+ * 数据由 `pnpm data:build` 生成到 src/data/generated/。
  */
-const modules = import.meta.glob("./generated/**/*.json");
+const modules = import.meta.glob([
+  "./generated/*/*.json",
+  "./generated/{articles,common3500,words}.json",
+]);
 
 function loadJson(path) {
   const loader = modules[`./generated/${path}`];

@@ -6,6 +6,12 @@ const routes = [
   { path: "/typing/:id", name: "typing", component: () => import("./views/TypingView.vue") },
   { path: "/free", name: "free", component: () => import("./views/FreeView.vue") },
   { path: "/reference", name: "reference", component: () => import("./views/ReferenceView.vue") },
+  {
+    path: "/strokes",
+    name: "strokes",
+    component: () => import("./views/StrokeLookupView.vue"),
+    meta: { title: "笔画查询" },
+  },
   { path: "/recall", name: "recall", component: () => import("./views/RecallView.vue") },
   {
     path: "/appearance",
@@ -16,4 +22,10 @@ const routes = [
   { path: "/:pathMatch(.*)*", redirect: "/" },
 ];
 
-export default createRouter({ history: createWebHashHistory(), routes });
+const router = createRouter({ history: createWebHashHistory(), routes });
+
+router.afterEach((to, _from, failure) => {
+  if (!failure) document.title = to.meta.title ? `${to.meta.title} · 五笔学习` : "五笔学习";
+});
+
+export default router;
