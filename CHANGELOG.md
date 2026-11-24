@@ -2,7 +2,7 @@
 
 ## 未发布 · 中英文字体
 
-- 中文使用 `@fontsource/lxgw-wenkai-tc` 提供的霞鹜文楷 TC，英文使用 `allo-font` 提供的 Allo，五笔字根保留专用字体。
+- 中文使用 `@fontsource/lxgw-wenkai` 提供的霞鹜文楷，英文使用 `allo-font` 提供的 Allo，五笔字根保留专用字体。
 
 ## 新世纪版与跟打提示
 
