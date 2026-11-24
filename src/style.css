@@ -13,7 +13,7 @@
 
 :root {
   --font-body:
-    "WubiRoots", "WubiRoots98", "LXGW WenKai GB", "PingFang SC", sans-serif;
+    "WubiRoots", "WubiRoots98", "Allo", "PingFang SC", sans-serif;
   --color-bg: var(--paper);
   --color-surface: var(--paper-raised);
   --color-border: var(--rule);

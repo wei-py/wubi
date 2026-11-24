@@ -1,23 +1,10 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "LXGW WenKai GB";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("./fonts/LXGWWenKaiGB-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "LXGW WenKai GB";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("./fonts/LXGWWenKaiGB-Medium.woff2") format("woff2");
-}
+@import "allo-font/allo.css";
 
 @theme {
-  --font-paper: "LXGW WenKai GB", "PingFang SC", sans-serif;
-  --font-code: "LXGW WenKai GB", "SFMono-Regular", Consolas, monospace;
+  --font-paper: "Allo", "PingFang SC", sans-serif;
+  --font-code: "Allo", "SFMono-Regular", Consolas, monospace;
   --color-paper: #ffffff;
   --color-ink: #171918;
   --color-accent: #171918;
@@ -42,8 +29,8 @@
   --danger-soft: #faf0ef;
   --focus: #285f47;
   --font-serif: var(--font-body);
-  --font-mono: "LXGW WenKai GB", "SFMono-Regular", Consolas, monospace;
-  --font-body: "LXGW WenKai GB", "PingFang SC", sans-serif;
+  --font-mono: "Allo", "SFMono-Regular", Consolas, monospace;
+  --font-body: "Allo", "PingFang SC", sans-serif;
   --z-base: 0;
   --z-card: 10;
   --z-sticky: 100;
@@ -53,6 +40,7 @@
   --z-dialog: 1200;
   --z-skip: 2000;
   font-family: var(--font-body);
+  font-size-adjust: from-font;
   font-weight: 500;
   font-size: 16px;
   color: var(--ink);

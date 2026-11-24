@@ -14,6 +14,7 @@
     "data:verify": "node scripts/verify-data.js wubi86 && node scripts/verify-data.js wubi98 && node scripts/verify-data.js wubi06 && node scripts/verify-articles.js"
   },
   "dependencies": {
+    "allo-font": "^1.0.3",
     "dayjs": "1.11.23",
     "pinia": "4.1.0",
     "vue": "3.5.44",
